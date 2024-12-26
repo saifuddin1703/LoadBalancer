@@ -2,17 +2,11 @@ package pkg
 
 import (
 	"container/heap"
+	"load-balancer/models"
 )
 
-// BackendServer represents a backend server with a connection count
-type BackendServer struct {
-	Address         string
-	ConnectionCount int
-	Index           int // Index in the heap
-}
-
 // MinHeap is a heap-based priority queue that stores BackendServer objects
-type MinHeap []BackendServer
+type MinHeap []models.BackendServer
 
 // Implement heap.Interface for MinHeap
 
@@ -32,7 +26,7 @@ func (h MinHeap) Swap(i, j int) {
 // Push adds a BackendServer to the heap
 func (h *MinHeap) Push(x interface{}) {
 	n := len(*h)
-	server := x.(*BackendServer)
+	server := x.(*models.BackendServer)
 	server.Index = n
 	*h = append(*h, *server)
 }
@@ -47,7 +41,7 @@ func (h *MinHeap) Pop() interface{} {
 }
 
 // UpdateConnectionCount updates the connection count for a server and re-heapifies
-func (h *MinHeap) UpdateConnectionCount(server *BackendServer, newCount int) {
+func (h *MinHeap) UpdateConnectionCount(server *models.BackendServer, newCount int) {
 	server.ConnectionCount = newCount
 	heap.Fix(h, server.Index)
 }
