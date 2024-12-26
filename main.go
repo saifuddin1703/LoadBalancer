@@ -9,7 +9,9 @@ import (
 
 func main() {
 	log.Info("Welcome to the Load Balancer")
-	lb := services.NewLoadBalancer([]string{}, 8080, strategies.NewRoundRobinStrategy())
+	address := []string{"localhost:6000", "localhost:6001", "localhost:6002"}
+	_ = address
+	lb := services.NewLoadBalancer(address, 8080, strategies.NewRoundRobinStrategy())
 	lb.Start()
 }
 

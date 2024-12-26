@@ -1,7 +1,6 @@
 package strategies
 
 import (
-	"net"
 	"sync"
 )
 
@@ -35,7 +34,7 @@ func (s *RoundRobinStrategy) RemoveServer(address string) {
 	}
 }
 
-func (s *RoundRobinStrategy) NextServer(c net.Conn) string {
+func (s *RoundRobinStrategy) NextServer() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

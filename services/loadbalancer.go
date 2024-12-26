@@ -48,8 +48,7 @@ func (lb *LoadBalancer) Start() {
 }
 func (lb *LoadBalancer) handleConnection(conn net.Conn) {
 	defer conn.Close()
-
-	backendAddr := lb.strategy.NextServer(conn)
+	backendAddr := lb.strategy.NextServer()
 	if backendAddr == "" {
 		log.Info("No available backend servers")
 		conn.Write([]byte("503 Service Unavailable"))
