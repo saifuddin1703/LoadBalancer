@@ -8,7 +8,11 @@ type IpHashStrategy struct {
 }
 
 func (s *IpHashStrategy) AddServer(address string) {
-	
+
 }
-func (s *IpHashStrategy) RemoveServer(address string)
-func (s *IpHashStrategy) NextServer(c net.Conn) string
+func (s *IpHashStrategy) RemoveServer(address string){
+
+}
+func (s *IpHashStrategy) NextServer(c net.Conn) string{
+	return ""
+}
