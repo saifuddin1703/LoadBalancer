@@ -4,14 +4,20 @@ import (
 	"fmt"
 	"io"
 	interfaces "load-balancer/interface"
+	"load-balancer/services/connectionpool"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/labstack/gommon/log"
 )
 
 type LoadBalancer struct {
 	Servers  []string
+	pools    map[string]*connectionpool.ConnectionPool
+	poolSize int
 	Port     int
+	mu       sync.Mutex
 	strategy interfaces.Strategy
 }
 
@@ -20,6 +26,9 @@ func NewLoadBalancer(servers []string, port int, strategy interfaces.Strategy) *
 		Servers:  servers,
 		Port:     port,
 		strategy: strategy,
+		mu:       sync.Mutex{},
+		pools:    make(map[string]*connectionpool.ConnectionPool),
+		poolSize: 500,
 	}
 
 	for _, server := range servers {
@@ -43,11 +52,10 @@ func (lb *LoadBalancer) Start() {
 			log.Printf("Failed to accept connection: %v", err)
 			continue
 		}
-		go lb.handleConnection(conn)
+		go lb.forwarRequest(conn)
 	}
 }
-func (lb *LoadBalancer) handleConnection(conn net.Conn) {
-	defer conn.Close()
+func (lb *LoadBalancer) forwarRequest(conn net.Conn) {
 	backendAddr := lb.strategy.NextServer()
 	if backendAddr == "" {
 		log.Info("No available backend servers")
@@ -55,17 +63,30 @@ func (lb *LoadBalancer) handleConnection(conn net.Conn) {
 		return
 	}
 
-	backendConn, err := net.Dial("tcp", backendAddr)
+	backendPool := lb.GetOrCreatePool(backendAddr)
+	backendConn, err := backendPool.Acquire()
+	backendConn.SetDeadline(time.Now().Add(5 * time.Minute))
 	if err != nil {
 		log.Printf("Failed to connect to backend server %s: %v", backendAddr, err)
 		conn.Write([]byte("503 Service Unavailable"))
 		return
 	}
-	defer backendConn.Close()
+	defer backendPool.Release(backendConn) // closing the backend's connection
+	defer conn.Close()                     // closing the client's connection
 
 	// Relay data between client and backend
 	go io.Copy(backendConn, conn)
 	io.Copy(conn, backendConn)
+}
+
+func (lb *LoadBalancer) GetOrCreatePool(address string) *connectionpool.ConnectionPool {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	if _, exists := lb.pools[address]; !exists {
+		lb.pools[address] = connectionpool.NewConnectionPool(address, lb.poolSize)
+	}
+	return lb.pools[address]
 }
 func (lb *LoadBalancer) AddServer(address string) {
 	lb.strategy.AddServer(address)
