@@ -52,27 +52,44 @@ func (lb *LoadBalancer) Start() {
 			log.Printf("Failed to accept connection: %v", err)
 			continue
 		}
-		go lb.forwarRequest(conn)
+		go lb.forwardRequest(conn)
 	}
 }
-func (lb *LoadBalancer) forwarRequest(conn net.Conn) {
-	backendAddr := lb.strategy.NextServer()
-	if backendAddr == "" {
-		log.Info("No available backend servers")
+func (lb *LoadBalancer) forwardRequest(conn net.Conn) {
+	defer conn.Close() // Ensure the client connection is always closed
+
+	var backendConn net.Conn
+	var backendPool *connectionpool.ConnectionPool
+
+	// Retry logic to find a suitable backend
+	maxRetries := len(lb.Servers)
+	for retries := 0; retries < maxRetries; retries++ {
+		backendAddr := lb.strategy.NextServer()
+		if backendAddr == "" {
+			log.Info("No available backend servers")
+			conn.Write([]byte("503 Service Unavailable"))
+			return
+		}
+
+		backendPool = lb.GetOrCreatePool(backendAddr)
+		var err error
+		backendConn, err = backendPool.Acquire()
+		if err != nil {
+			log.Printf("Failed to connect to backend server %s: %v", backendAddr, err)
+			// lb.RemoveServer(backendAddr) // Consider making this temporary with health checks
+			continue
+		}
+		break
+	}
+	if backendConn == nil {
+		log.Info("All backends are unavailable.")
 		conn.Write([]byte("503 Service Unavailable"))
 		return
 	}
 
-	backendPool := lb.GetOrCreatePool(backendAddr)
-	backendConn, err := backendPool.Acquire()
+	// Set timeout for backend connection
 	backendConn.SetDeadline(time.Now().Add(5 * time.Minute))
-	if err != nil {
-		log.Printf("Failed to connect to backend server %s: %v", backendAddr, err)
-		conn.Write([]byte("503 Service Unavailable"))
-		return
-	}
-	defer backendPool.Release(backendConn) // closing the backend's connection
-	defer conn.Close()                     // closing the client's connection
+	defer backendPool.Release(backendConn) // Ensure backend connection is released
 
 	// Relay data between client and backend
 	go io.Copy(backendConn, conn)
